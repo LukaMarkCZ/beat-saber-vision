@@ -14,6 +14,7 @@ export interface SaberSegment {
   direction: THREE.Vector3;
   velocity: THREE.Vector3;
   speed: number;
+  isTracking: boolean;
 }
 
 class SingleSaber {
@@ -32,18 +33,19 @@ class SingleSaber {
   private maxTrailSteps = 14;
 
   public colorType: 'red' | 'blue';
-  public bladeLength = 1.15;
+  public bladeLength = 0.78;
   private primaryColor: THREE.Color;
 
   // Collision state
   public segment: SaberSegment = {
-    base: new THREE.Vector3(),
-    tip: new THREE.Vector3(),
-    prevBase: new THREE.Vector3(),
-    prevTip: new THREE.Vector3(),
+    base: new THREE.Vector3(0, -10, 0),
+    tip: new THREE.Vector3(0, -10, 0),
+    prevBase: new THREE.Vector3(0, -10, 0),
+    prevTip: new THREE.Vector3(0, -10, 0),
     direction: new THREE.Vector3(0, 0, -1),
     velocity: new THREE.Vector3(),
-    speed: 0
+    speed: 0,
+    isTracking: false
   };
 
   private lastWhooshTime = 0;
@@ -154,6 +156,17 @@ class SingleSaber {
   public update(pose: SaberPose, now: number) {
     this.group.visible = pose.isTracking;
     this.trailMesh.visible = pose.isTracking;
+    this.segment.isTracking = pose.isTracking;
+
+    if (!pose.isTracking) {
+      // Park segment far outside playfield so inactive hands never collide with cubes
+      this.segment.base.set(0, -10, 0);
+      this.segment.tip.set(0, -10, 0);
+      this.segment.prevBase.set(0, -10, 0);
+      this.segment.prevTip.set(0, -10, 0);
+      this.segment.speed = 0;
+      return;
+    }
 
     // 1. Update position
     this.group.position.set(pose.position.x, pose.position.y, pose.position.z);

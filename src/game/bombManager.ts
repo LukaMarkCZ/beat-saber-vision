@@ -141,6 +141,8 @@ export class BombManager {
   }
 
   private checkBombIntersection(bomb: ActiveBomb, saber: SaberSegment, index: number) {
+    if (!saber.isTracking) return;
+
     const bombPos = bomb.mesh.position;
     const bombRadius = 0.32;
 

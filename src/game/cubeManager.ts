@@ -270,8 +270,8 @@ export class CubeManager {
       // Update bounding box
       cube.box.setFromObject(cube.mesh);
 
-      // Check collision with both sabers in an expanded slice zone
-      if (!cube.isHit && cube.mesh.position.z >= -1.8 && cube.mesh.position.z <= 1.1) {
+      // Check collision with both sabers in calibrated slice zone
+      if (!cube.isHit && cube.mesh.position.z >= -0.85 && cube.mesh.position.z <= 0.65) {
         this.checkSaberIntersection(cube, saberManager.leftSaber.segment, 'red', i);
         if (!cube.isHit) {
           this.checkSaberIntersection(cube, saberManager.rightSaber.segment, 'blue', i);
@@ -333,7 +333,7 @@ export class CubeManager {
 
   /**
    * Continuous swept collision detection: tests current frame, previous frame, midpoint, and hand base
-   * 100% REWARDING: Every hit shatters the note! Slicing or punching gives PERFECT or GREAT!
+   * Requires ACTIVE tracking and MOTION (speed >= 0.65 m/s) so stationary sabers don't auto-kill notes!
    */
   private checkSaberIntersection(
     cube: ActiveCube,
@@ -341,8 +341,14 @@ export class CubeManager {
     saberColor: 'red' | 'blue',
     cubeIndex: number
   ) {
+    // 1. Must be actively tracked
+    if (!saber.isTracking) return;
+
+    // 2. Must be actively in motion (prevent auto-destroying cubes while doing nothing)
+    if (saber.speed < 0.65) return;
+
     const cubePos = cube.mesh.position;
-    const cubeRadius = 0.65; // Generous hit radius for effortless slicing and punching
+    const cubeRadius = 0.36; // Calibrated radius matching the physical size of the cube
 
     // 1. Current frame blade distance
     const distCurr = this.distSegmentToPoint(saber.base, saber.tip, cubePos);
@@ -368,7 +374,7 @@ export class CubeManager {
 
       // Color match or single-hand play
       const isMatchingColor = (cube.note.type === saberColor) || handTracker.isSingleHandMode;
-      const isFastSlash = (saber.speed > 1.6);
+      const isFastSlash = (saber.speed > 1.8);
 
       // Hit quality: PERFECT for color match or fast slash, GREAT for any other hit
       const isPerfect = isMatchingColor || isFastSlash;
