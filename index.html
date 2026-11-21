@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Beat Saber Vision - Webcam Hand Tracking 3D Rhythm Game</title>
+    <!-- MediaPipe dependencies from CDN for rock-solid camera utils & hands execution -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- 3D WebGL Canvas -->
+      <canvas id="game-canvas"></canvas>
+
+      <!-- Hidden video stream for webcam vision processing -->
+      <video id="webcam-video" autoplay playsinline muted></video>
+
+      <!-- Subtle frosted noise texture -->
+      <div class="cyber-noise-overlay"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
