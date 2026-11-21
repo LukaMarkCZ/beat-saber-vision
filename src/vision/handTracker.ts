@@ -138,8 +138,8 @@ export class HandTracker {
     hands.setOptions({
       maxNumHands: 2,
       modelComplexity: 0, // 0 = ultra-fast mobile optimized model
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
+      minDetectionConfidence: 0.38,
+      minTrackingConfidence: 0.38
     });
 
     hands.onResults((results: any) => this.processMediaPipeResults(results));

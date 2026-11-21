@@ -31,33 +31,33 @@ export class WorldEnvironment {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.35;
+    this.renderer.toneMappingExposure = 0.95;
 
     // 2. Scene & Fog
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x060714, 0.022);
+    this.scene.fog = new THREE.FogExp2(0x060714, 0.025);
 
     // 3. Camera (player eye level)
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
     this.camera.position.set(0, 1.6, 2.8);
 
     // 4. Lights
-    const ambientLight = new THREE.AmbientLight(0x22223b, 1.5);
+    const ambientLight = new THREE.AmbientLight(0x181a28, 1.0);
     this.scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
     dirLight.position.set(0, 8, 4);
     this.scene.add(dirLight);
 
-    // 5. Post-processing Bloom
+    // 5. Post-processing Bloom (Tuned: crisp, subtle neon, no overexposure)
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.5,  // Strength
-      0.45, // Radius
-      0.22  // Threshold
+      0.45, // Strength (gentle glow, not a blinding flashbang)
+      0.35, // Radius
+      0.82  // Threshold (only high-emissive objects glow)
     );
     this.composer.addPass(this.bloomPass);
 
@@ -111,18 +111,18 @@ export class WorldEnvironment {
           float leftLane = smoothstep(0.01, 0.0, abs(vUv.x - 0.25)) * step(0.6, movingY);
           float rightLane = smoothstep(0.01, 0.0, abs(vUv.x - 0.75)) * step(0.6, movingY);
 
-          vec3 baseDark = vec3(0.02, 0.025, 0.06);
-          vec3 neonCyan = uColor2 * (1.2 + uBassPulse * 1.5);
-          vec3 neonRed = uColor1 * (1.2 + uBassPulse * 1.5);
+          vec3 baseDark = vec3(0.015, 0.02, 0.04);
+          vec3 neonCyan = uColor2 * (0.8 + uBassPulse * 0.4);
+          vec3 neonRed = uColor1 * (0.8 + uBassPulse * 0.4);
 
           vec3 col = baseDark;
-          col += (edgeLine * (vUv.x < 0.5 ? neonRed : neonCyan) * 2.5);
-          col += centerLine * vec3(0.9, 0.9, 1.0) * 1.8;
-          col += (leftLane * neonRed * 0.8) + (rightLane * neonCyan * 0.8);
+          col += (edgeLine * (vUv.x < 0.5 ? neonRed : neonCyan) * 0.9);
+          col += centerLine * vec3(0.5, 0.6, 0.8) * 0.8;
+          col += (leftLane * neonRed * 0.4) + (rightLane * neonCyan * 0.4);
 
           // Distance fade
           float alpha = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
-          gl_FragColor = vec4(col, alpha * 0.95);
+          gl_FragColor = vec4(col, alpha * 0.85);
         }
       `,
       transparent: true,
@@ -184,12 +184,12 @@ export class WorldEnvironment {
       const radius = 3.6;
 
       // Hexagon ring
-      const ringGeo = new THREE.TorusGeometry(radius, 0.04, 8, 6);
+      const ringGeo = new THREE.TorusGeometry(radius, 0.025, 6, 6);
       const isRed = i % 2 === 0;
       const ringMat = new THREE.MeshBasicMaterial({
-        color: isRed ? 0xff1053 : 0x00f0ff,
+        color: isRed ? 0x991033 : 0x0099bb,
         transparent: true,
-        opacity: 0.85
+        opacity: 0.25
       });
       const ringMesh = new THREE.Mesh(ringGeo, ringMat);
       ringMesh.rotation.z = Math.PI / 6;
@@ -202,10 +202,10 @@ export class WorldEnvironment {
   }
 
   private createEqualizerTowers() {
-    // Neon equalizer pillars flanking the runway
+    // Subtle neon equalizer pillars flanking the runway
     const barCount = 16;
     const barSpacing = 2.4;
-    const barWidth = 0.35;
+    const barWidth = 0.25;
 
     for (let i = 0; i < barCount; i++) {
       const zPos = -i * barSpacing - 2;
@@ -214,9 +214,9 @@ export class WorldEnvironment {
       const geoLeft = new THREE.BoxGeometry(barWidth, 1.0, barWidth);
       geoLeft.translate(0, 0.5, 0); // bottom origin
       const matLeft = new THREE.MeshBasicMaterial({
-        color: 0xff1053,
+        color: 0xaa0a30,
         transparent: true,
-        opacity: 0.9
+        opacity: 0.3
       });
       const meshLeft = new THREE.Mesh(geoLeft, matLeft);
       meshLeft.position.set(-2.5, 0, zPos);
@@ -227,9 +227,9 @@ export class WorldEnvironment {
       const geoRight = new THREE.BoxGeometry(barWidth, 1.0, barWidth);
       geoRight.translate(0, 0.5, 0);
       const matRight = new THREE.MeshBasicMaterial({
-        color: 0x00f0ff,
+        color: 0x0088aa,
         transparent: true,
-        opacity: 0.9
+        opacity: 0.3
       });
       const meshRight = new THREE.Mesh(geoRight, matRight);
       meshRight.position.set(2.5, 0, zPos);
@@ -278,6 +278,20 @@ export class WorldEnvironment {
 
   public render() {
     this.composer.render();
+  }
+
+  public setBloomMode(mode: 'off' | 'subtle' | 'high') {
+    if (mode === 'off') {
+      this.bloomPass.enabled = false;
+    } else if (mode === 'subtle') {
+      this.bloomPass.enabled = true;
+      this.bloomPass.strength = 0.35;
+      this.bloomPass.threshold = 0.85;
+    } else {
+      this.bloomPass.enabled = true;
+      this.bloomPass.strength = 0.6;
+      this.bloomPass.threshold = 0.75;
+    }
   }
 
   private onResize() {

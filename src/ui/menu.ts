@@ -98,6 +98,14 @@ export class MainMenu {
               </select>
             </div>
             <div class="setting-item">
+              <label>Neon Glow (Záře a Bloom)</label>
+              <select id="setting-bloom-select" class="cyber-select">
+                <option value="subtle" selected>Jemná (Optimální)</option>
+                <option value="off">Vypnuto (Maximální čistota)</option>
+                <option value="high">Výrazná</option>
+              </select>
+            </div>
+            <div class="setting-item">
               <label>Mirror Camera View (Zrcadlení)</label>
               <input id="setting-mirror-chk" type="checkbox" checked />
             </div>
@@ -290,6 +298,15 @@ export class MainMenu {
       }
     });
 
+    const bloomSelect = this.container.querySelector('#setting-bloom-select') as HTMLSelectElement;
+    if (bloomSelect) {
+      bloomSelect.addEventListener('change', () => {
+        if (this.onBloomChange) {
+          this.onBloomChange(bloomSelect.value as 'off' | 'subtle' | 'high');
+        }
+      });
+    }
+
     const calibrateBtn = this.container.querySelector('#setting-calibrate-btn') as HTMLButtonElement;
     calibrateBtn.addEventListener('click', () => {
       soundSynth.playComboMilestone(2);
@@ -302,4 +319,5 @@ export class MainMenu {
   }
 
   public onSpeedChange: ((mult: number) => void) | null = null;
+  public onBloomChange: ((mode: 'off' | 'subtle' | 'high') => void) | null = null;
 }

@@ -87,6 +87,10 @@ class BeatSaberApp {
       this.cubeManager.speedMultiplier = mult;
     };
 
+    this.menu.onBloomChange = (mode: 'off' | 'subtle' | 'high') => {
+      this.world.setBloomMode(mode);
+    };
+
     // HUD: Pause
     this.hud.setOnPause(() => {
       this.pauseGame();

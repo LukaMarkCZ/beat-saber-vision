@@ -53,18 +53,18 @@ export class CubeManager {
 
     this.redMat = new THREE.MeshStandardMaterial({
       color: 0xff1053,
-      emissive: 0xff1053,
-      emissiveIntensity: 0.6,
-      roughness: 0.25,
-      metalness: 0.7
+      emissive: 0x880525,
+      emissiveIntensity: 0.25,
+      roughness: 0.35,
+      metalness: 0.6
     });
 
     this.blueMat = new THREE.MeshStandardMaterial({
-      color: 0x00f0ff,
-      emissive: 0x00f0ff,
-      emissiveIntensity: 0.6,
-      roughness: 0.25,
-      metalness: 0.7
+      color: 0x00d0ff,
+      emissive: 0x005588,
+      emissiveIntensity: 0.25,
+      roughness: 0.35,
+      metalness: 0.6
     });
 
     this.pregenerateArrowTextures();

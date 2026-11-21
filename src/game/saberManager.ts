@@ -72,30 +72,30 @@ class SingleSaber {
 
     this.group.add(this.hilt);
 
-    // 2. Laser Blade Core (bright white/tint)
-    const coreGeo = new THREE.CylinderGeometry(0.014, 0.014, this.bladeLength, 12);
+    // 2. Laser Blade Core (crisp, narrow filament)
+    const coreGeo = new THREE.CylinderGeometry(0.007, 0.007, this.bladeLength, 12);
     coreGeo.translate(0, this.bladeLength / 2, 0);
     const coreMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff
+      color: colorType === 'red' ? 0xffe0e8 : 0xe0ffff
     });
     this.bladeCore = new THREE.Mesh(coreGeo, coreMat);
     this.group.add(this.bladeCore);
 
-    // 3. Laser Blade Outer Plasma Glow
-    const glowGeo = new THREE.CylinderGeometry(0.035, 0.035, this.bladeLength, 16);
+    // 3. Laser Blade Outer Plasma Glow (rich color, controlled glow)
+    const glowGeo = new THREE.CylinderGeometry(0.022, 0.022, this.bladeLength, 16);
     glowGeo.translate(0, this.bladeLength / 2, 0);
     const glowMat = new THREE.MeshBasicMaterial({
       color: this.primaryColor,
       transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
+      opacity: 0.65,
+      blending: THREE.NormalBlending,
       depthWrite: false
     });
     this.bladeGlow = new THREE.Mesh(glowGeo, glowMat);
     this.group.add(this.bladeGlow);
 
-    // 4. Tip Point Light for dynamic local illumination
-    this.tipLight = new THREE.PointLight(this.primaryColor, 1.8, 2.5);
+    // Subtle tip light
+    this.tipLight = new THREE.PointLight(this.primaryColor, 0.35, 1.2);
     this.tipLight.position.set(0, this.bladeLength, 0);
     this.group.add(this.tipLight);
 
@@ -127,7 +127,7 @@ class SingleSaber {
         uniform vec3 uColor;
         varying float vAlpha;
         void main() {
-          gl_FragColor = vec4(uColor * 1.5, vAlpha * 0.7);
+          gl_FragColor = vec4(uColor, vAlpha * 0.4);
         }
       `,
       transparent: true,
