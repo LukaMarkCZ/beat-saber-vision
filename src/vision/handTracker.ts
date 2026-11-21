@@ -31,9 +31,6 @@ export class HandTracker {
   public offsetY = 1.2;
   public offsetZ = 0.15;
 
-  // Smoothing parameter (0 to 1, higher = faster response, lower = smoother)
-  private baseAlpha = 0.42;
-
   // Internal state for Left and Right hands
   public leftSaber: SaberPose = {
     position: { x: -0.5, y: 1.2, z: 0.2 },
@@ -53,7 +50,12 @@ export class HandTracker {
 
   private prevLeftPos = { x: -0.5, y: 1.2, z: 0.2 };
   private prevRightPos = { x: 0.5, y: 1.2, z: 0.2 };
-  private lastTimestamp = 0;
+
+  // 60/120 FPS Interpolation targets
+  private targetLeftPos = { x: -0.5, y: 1.2, z: 0.15 };
+  private targetLeftDir = { x: 0, y: 0.2, z: -0.92 };
+  private targetRightPos = { x: 0.5, y: 1.2, z: 0.15 };
+  private targetRightDir = { x: 0, y: 0.2, z: -0.92 };
 
   // Raw landmarks for PIP camera rendering
   public rawLandmarksLeft: HandLandmark[] | null = null;
@@ -152,12 +154,22 @@ export class HandTracker {
 
     hands.onResults((results: any) => this.processMediaPipeResults(results));
 
+    // Non-blocking single-frame inference lock to eliminate queue congestion & lag spikes
+    let isProcessing = false;
+
     // Camera utility loop
     if (win.Camera && this.videoElement) {
       const camera = new win.Camera(this.videoElement, {
         onFrame: async () => {
-          if (this.isRunning && this.videoElement && this.inputMode === 'WEBCAM') {
+          if (!this.isRunning || !this.videoElement || this.inputMode !== 'WEBCAM') return;
+          if (isProcessing) return; // Drop frame if previous is still computing!
+          isProcessing = true;
+          try {
             await hands.send({ image: this.videoElement });
+          } catch (e) {
+            console.warn('MediaPipe error:', e);
+          } finally {
+            isProcessing = false;
           }
         },
         width: 480,
@@ -168,8 +180,15 @@ export class HandTracker {
       // Fallback manual requestAnimationFrame loop
       const detectLoop = async () => {
         if (this.isRunning && this.videoElement && this.inputMode === 'WEBCAM') {
-          if (this.videoElement.readyState >= 2) {
-            await hands.send({ image: this.videoElement });
+          if (this.videoElement.readyState >= 2 && !isProcessing) {
+            isProcessing = true;
+            try {
+              await hands.send({ image: this.videoElement });
+            } catch (e) {
+              console.warn('MediaPipe error:', e);
+            } finally {
+              isProcessing = false;
+            }
           }
         }
         requestAnimationFrame(detectLoop);
@@ -205,10 +224,6 @@ export class HandTracker {
       this.onResultsCallback(results);
     }
 
-    const now = performance.now();
-    const dt = Math.max(0.001, (now - this.lastTimestamp) / 1000);
-    this.lastTimestamp = now;
-
     this.rawLandmarksLeft = null;
     this.rawLandmarksRight = null;
     let foundLeft = false;
@@ -227,21 +242,21 @@ export class HandTracker {
 
         foundLeft = true;
         this.rawLandmarksLeft = detected[0].lm;
-        this.updateSaberPose(this.leftSaber, this.prevLeftPos, detected[0].lm, dt);
+        this.recordHandTarget(this.targetLeftPos, this.targetLeftDir, detected[0].lm);
 
         foundRight = true;
         this.rawLandmarksRight = detected[1].lm;
-        this.updateSaberPose(this.rightSaber, this.prevRightPos, detected[1].lm, dt);
+        this.recordHandTarget(this.targetRightPos, this.targetRightDir, detected[1].lm);
       } else if (detected.length === 1) {
         const single = detected[0];
         if (single.normX < 0.5) {
           foundLeft = true;
           this.rawLandmarksLeft = single.lm;
-          this.updateSaberPose(this.leftSaber, this.prevLeftPos, single.lm, dt);
+          this.recordHandTarget(this.targetLeftPos, this.targetLeftDir, single.lm);
         } else {
           foundRight = true;
           this.rawLandmarksRight = single.lm;
-          this.updateSaberPose(this.rightSaber, this.prevRightPos, single.lm, dt);
+          this.recordHandTarget(this.targetRightPos, this.targetRightDir, single.lm);
         }
       }
     }
@@ -250,17 +265,18 @@ export class HandTracker {
     this.rightSaber.isTracking = foundRight;
   }
 
-  private updateSaberPose(
-    saber: SaberPose,
-    prevPos: { x: number; y: number; z: number },
-    landmarks: HandLandmark[],
-    dt: number
+  /**
+   * Records target hand position and direction from MediaPipe landmarks
+   * Uses Metacarpal bones (wrist to middle knuckle) so clenching fists never twitches angle!
+   */
+  private recordHandTarget(
+    targetPos: { x: number; y: number; z: number },
+    targetDir: { x: number; y: number; z: number },
+    landmarks: HandLandmark[]
   ) {
-    // Wrist (0), Index MCP (5), Middle MCP (9), Index Tip (8)
     const wrist = landmarks[0];
     const indexMcp = landmarks[5];
     const middleMcp = landmarks[9];
-    const indexTip = landmarks[8];
 
     // Palm center
     const palmX = (wrist.x + indexMcp.x + middleMcp.x) / 3;
@@ -271,45 +287,22 @@ export class HandTracker {
     const normY = palmY;
 
     // Convert to world space
-    const targetX = (normX - 0.5) * this.sensitivityX + this.offsetX;
-    const targetY = (1.0 - normY) * this.sensitivityY + (this.offsetY - this.sensitivityY * 0.5);
-    const targetZ = this.offsetZ;
+    targetPos.x = (normX - 0.5) * this.sensitivityX + this.offsetX;
+    targetPos.y = (1.0 - normY) * this.sensitivityY + (this.offsetY - this.sensitivityY * 0.5);
+    targetPos.z = this.offsetZ;
 
-    // Dynamic smoothing: if moving fast, increase response immediately to eliminate lag
-    const moveDist = Math.hypot(targetX - saber.position.x, targetY - saber.position.y);
-    const currentAlpha = Math.min(0.92, Math.max(this.baseAlpha, moveDist * 3.5));
+    // Knuckle vector: rigid palm bone, never collapses when making a fist
+    const rawDx = (this.mirror ? -(middleMcp.x - wrist.x) : (middleMcp.x - wrist.x));
+    const rawDy = -(middleMcp.y - wrist.y);
 
-    saber.position.x += (targetX - saber.position.x) * currentAlpha;
-    saber.position.y += (targetY - saber.position.y) * currentAlpha;
-    saber.position.z += (targetZ - saber.position.z) * currentAlpha;
+    const dirX = rawDx * 1.6;
+    const dirY = rawDy * 1.6 + 0.15;
+    const dirZ = -0.92;
 
-    // Compute hand pointing vector (blade direction)
-    const rawDx = (this.mirror ? -(indexTip.x - wrist.x) : (indexTip.x - wrist.x));
-    const rawDy = -(indexTip.y - wrist.y);
-
-    // Blade primarily points forward along -Z, tilted by hand angle
-    const dirX = rawDx * 1.5;
-    const dirY = rawDy * 1.5 + 0.25;
-    const dirZ = -0.85;
-
-    const len = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ) || 1;
-    saber.direction.x = dirX / len;
-    saber.direction.y = dirY / len;
-    saber.direction.z = dirZ / len;
-
-    // Compute velocity
-    const vx = (saber.position.x - prevPos.x) / dt;
-    const vy = (saber.position.y - prevPos.y) / dt;
-    const vz = (saber.position.z - prevPos.z) / dt;
-
-    saber.velocity.x = vx;
-    saber.velocity.y = vy;
-    saber.velocity.z = vz;
-    saber.speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
-
-    prevPos.x = saber.position.x;
-    prevPos.y = saber.position.y;
-    prevPos.z = saber.position.z;
+    const len = Math.hypot(dirX, dirY, dirZ) || 1;
+    targetDir.x = dirX / len;
+    targetDir.y = dirY / len;
+    targetDir.z = dirZ / len;
   }
 
   /**
@@ -390,7 +383,57 @@ export class HandTracker {
 
       updateMouseSaber(this.leftSaber, this.prevLeftPos, targetLeftX);
       updateMouseSaber(this.rightSaber, this.prevRightPos, targetRightX);
+      return;
     }
+
+    // WEBCAM 60/120 FPS CONTINUOUS BUTTERY SMOOTH LERP INTERPOLATION
+    const updateWebcamSaber = (
+      saber: SaberPose,
+      targetPos: { x: number; y: number; z: number },
+      targetDir: { x: number; y: number; z: number },
+      prevPos: { x: number; y: number; z: number }
+    ) => {
+      if (!saber.isTracking) return;
+
+      const dist = Math.hypot(targetPos.x - saber.position.x, targetPos.y - saber.position.y);
+
+      // Adaptive response: 18/s when steady (filters all hand tremor), up to 50/s on rapid swings (zero lag)
+      const lerpSpeed = Math.min(50.0, 18.0 + dist * 32.0);
+      const alpha = 1.0 - Math.exp(-lerpSpeed * dt);
+
+      saber.position.x += (targetPos.x - saber.position.x) * alpha;
+      saber.position.y += (targetPos.y - saber.position.y) * alpha;
+      saber.position.z += (targetPos.z - saber.position.z) * alpha;
+
+      // Rotational filter: silky smooth angle transitions without twitching
+      const rotAlpha = 1.0 - Math.exp(-14.0 * dt);
+      saber.direction.x += (targetDir.x - saber.direction.x) * rotAlpha;
+      saber.direction.y += (targetDir.y - saber.direction.y) * rotAlpha;
+      saber.direction.z += (targetDir.z - saber.direction.z) * rotAlpha;
+
+      const dLen = Math.hypot(saber.direction.x, saber.direction.y, saber.direction.z) || 1;
+      saber.direction.x /= dLen;
+      saber.direction.y /= dLen;
+      saber.direction.z /= dLen;
+
+      // Continuous 60/120 FPS velocity estimation
+      const safeDt = Math.max(0.001, dt);
+      const vx = (saber.position.x - prevPos.x) / safeDt;
+      const vy = (saber.position.y - prevPos.y) / safeDt;
+      const vz = (saber.position.z - prevPos.z) / safeDt;
+
+      saber.velocity.x += (vx - saber.velocity.x) * 0.45;
+      saber.velocity.y += (vy - saber.velocity.y) * 0.45;
+      saber.velocity.z += (vz - saber.velocity.z) * 0.45;
+      saber.speed = Math.hypot(saber.velocity.x, saber.velocity.y, saber.velocity.z);
+
+      prevPos.x = saber.position.x;
+      prevPos.y = saber.position.y;
+      prevPos.z = saber.position.z;
+    };
+
+    updateWebcamSaber(this.leftSaber, this.targetLeftPos, this.targetLeftDir, this.prevLeftPos);
+    updateWebcamSaber(this.rightSaber, this.targetRightPos, this.targetRightDir, this.prevRightPos);
   }
 }
 

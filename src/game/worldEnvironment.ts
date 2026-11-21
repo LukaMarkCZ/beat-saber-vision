@@ -19,7 +19,6 @@ export class WorldEnvironment {
   private archGates: THREE.Group[] = [];
   private equalizerBarsLeft: THREE.Mesh[] = [];
   private equalizerBarsRight: THREE.Mesh[] = [];
-  private strikeRings: THREE.Mesh[] = [];
   private runwayLinesMaterial!: THREE.ShaderMaterial;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -66,7 +65,6 @@ export class WorldEnvironment {
     this.runwayLinesMaterial = this.createRunway();
     this.createGridFloor();
     this.createPlayerPlatform();
-    this.createStrikeZone();
     this.createNeonArchGates();
     this.createEqualizerTowers();
 
@@ -176,40 +174,6 @@ export class WorldEnvironment {
     this.scene.add(rightFoot);
   }
 
-  private createStrikeZone() {
-    // 1. Neon floor strike line right at Z = 0
-    const lineGeo = new THREE.PlaneGeometry(3.2, 0.06);
-    lineGeo.rotateX(-Math.PI / 2);
-    const lineMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.6,
-      blending: THREE.AdditiveBlending
-    });
-    const strikeLine = new THREE.Mesh(lineGeo, lineMat);
-    strikeLine.position.set(0, 0.02, 0);
-    this.scene.add(strikeLine);
-
-    // 2. 4 Holographic strike target rings at Z = 0
-    const laneXs = [-0.85, -0.28, 0.28, 0.85];
-    const ringGeo = new THREE.RingGeometry(0.26, 0.30, 24);
-
-    laneXs.forEach((x, i) => {
-      const isRed = i < 2;
-      const mat = new THREE.MeshBasicMaterial({
-        color: isRed ? 0xff1053 : 0x00f0ff,
-        transparent: true,
-        opacity: 0.5,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending
-      });
-      const ring = new THREE.Mesh(ringGeo, mat);
-      ring.position.set(x, 1.2, 0);
-      this.scene.add(ring);
-      this.strikeRings.push(ring);
-    });
-  }
-
   private createNeonArchGates() {
     // Glowing neon hexagon rings along the tunnel that pulse with the music
     const gateCount = 8;
@@ -304,14 +268,7 @@ export class WorldEnvironment {
       barR.scale.y += (targetHeight - barR.scale.y) * 0.35;
     }
 
-    // 4. Animate strike target rings
-    for (let i = 0; i < this.strikeRings.length; i++) {
-      this.strikeRings[i].rotation.z += (i % 2 === 0 ? 0.6 : -0.6) * dt;
-      const pulse = 1.0 + audioBands.bass * 0.12;
-      this.strikeRings[i].scale.set(pulse, pulse, 1.0);
-    }
-
-    // 5. Subtle camera sway on heavy beat kicks
+    // 4. Subtle camera sway on heavy beat kicks
     if (audioBands.isBeat) {
       this.camera.position.y = 1.6 + (Math.random() - 0.5) * 0.04;
     } else {
