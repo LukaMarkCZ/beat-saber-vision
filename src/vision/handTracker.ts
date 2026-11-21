@@ -89,6 +89,14 @@ export class HandTracker {
     return this.videoElement;
   }
 
+  public get hasAnyHand(): boolean {
+    return this.leftSaber.isTracking || this.rightSaber.isTracking;
+  }
+
+  public get isSingleHandMode(): boolean {
+    return (this.leftSaber.isTracking !== this.rightSaber.isTracking);
+  }
+
   /**
    * Initializes webcam and MediaPipe Hands
    */
@@ -206,23 +214,34 @@ export class HandTracker {
     let foundLeft = false;
     let foundRight = false;
 
-    if (results.multiHandLandmarks && results.multiHandedness) {
-      for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-        const landmarks: HandLandmark[] = results.multiHandLandmarks[i];
-        const handedness = results.multiHandedness[i];
-        const label = handedness.label; // 'Left' or 'Right'
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+      const detected = results.multiHandLandmarks.map((lm: HandLandmark[], idx: number) => {
+        const avgX = (lm[0].x + lm[5].x + lm[9].x) / 3;
+        const normX = this.mirror ? 1.0 - avgX : avgX;
+        return { lm, normX, idx };
+      });
 
-        // With camera mirror mode: MediaPipe 'Left' is player's Right hand visually in selfie mode
-        const isPlayerLeftHand = this.mirror ? label === 'Right' : label === 'Left';
+      if (detected.length >= 2) {
+        // Sort by horizontal position: left-most hand is Left (Red), right-most is Right (Blue)
+        detected.sort((a: { normX: number }, b: { normX: number }) => a.normX - b.normX);
 
-        if (isPlayerLeftHand) {
+        foundLeft = true;
+        this.rawLandmarksLeft = detected[0].lm;
+        this.updateSaberPose(this.leftSaber, this.prevLeftPos, detected[0].lm, dt);
+
+        foundRight = true;
+        this.rawLandmarksRight = detected[1].lm;
+        this.updateSaberPose(this.rightSaber, this.prevRightPos, detected[1].lm, dt);
+      } else if (detected.length === 1) {
+        const single = detected[0];
+        if (single.normX < 0.5) {
           foundLeft = true;
-          this.rawLandmarksLeft = landmarks;
-          this.updateSaberPose(this.leftSaber, this.prevLeftPos, landmarks, dt);
+          this.rawLandmarksLeft = single.lm;
+          this.updateSaberPose(this.leftSaber, this.prevLeftPos, single.lm, dt);
         } else {
           foundRight = true;
-          this.rawLandmarksRight = landmarks;
-          this.updateSaberPose(this.rightSaber, this.prevRightPos, landmarks, dt);
+          this.rawLandmarksRight = single.lm;
+          this.updateSaberPose(this.rightSaber, this.prevRightPos, single.lm, dt);
         }
       }
     }

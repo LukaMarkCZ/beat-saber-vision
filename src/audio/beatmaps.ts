@@ -134,8 +134,8 @@ export function generateProceduralBeatmap(
         cutDirection: blueDir
       });
     } else {
-      // Dynamic mix with occasional bomb dodge
-      if (difficulty !== 'EASY' && b % 8 === 7) {
+      // Dynamic mix with occasional bomb dodge (Only in EXPERT mode)
+      if (difficulty === 'EXPERT' && b % 8 === 7) {
         notes.push({
           time: t,
           lineIndex: 1,
@@ -169,7 +169,7 @@ export const PRESET_TRACKS: SongTrack[] = [
     bpm: 105,
     difficulty: 'EASY',
     duration: 80,
-    speed: 12.0,
+    speed: 9.5,
     notes: generateProceduralBeatmap(105, 80, 'EASY')
   },
   {
@@ -179,7 +179,7 @@ export const PRESET_TRACKS: SongTrack[] = [
     bpm: 128,
     difficulty: 'NORMAL',
     duration: 75,
-    speed: 14.5,
+    speed: 11.8,
     notes: generateProceduralBeatmap(128, 75, 'NORMAL')
   },
   {
@@ -189,7 +189,7 @@ export const PRESET_TRACKS: SongTrack[] = [
     bpm: 140,
     difficulty: 'EXPERT',
     duration: 65,
-    speed: 17.5,
+    speed: 14.5,
     notes: generateProceduralBeatmap(140, 65, 'EXPERT')
   }
 ];

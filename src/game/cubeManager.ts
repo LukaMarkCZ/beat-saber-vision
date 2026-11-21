@@ -8,6 +8,7 @@ import { SaberManager, type SaberSegment } from './saberManager';
 import { ParticleSystem } from './particleSystem';
 import { soundSynth } from '../audio/soundSynth';
 import { gameState } from './gameState';
+import { handTracker } from '../vision/handTracker';
 
 export interface ActiveCube {
   note: BeatNote;
@@ -331,7 +332,8 @@ export class CubeManager {
   }
 
   /**
-   * Swept continuous collision detection: tests current frame, previous frame, and midpoint
+   * Continuous swept collision detection: tests current frame, previous frame, midpoint, and hand base
+   * 100% REWARDING: Every hit shatters the note! Slicing or punching gives PERFECT or GREAT!
    */
   private checkSaberIntersection(
     cube: ActiveCube,
@@ -340,81 +342,56 @@ export class CubeManager {
     cubeIndex: number
   ) {
     const cubePos = cube.mesh.position;
-    const cubeRadius = 0.58; // Forgiving hit radius to ensure crisp, satisfying cuts
+    const cubeRadius = 0.65; // Generous hit radius for effortless slicing and punching
 
-    // 1. Current frame distance
+    // 1. Current frame blade distance
     const distCurr = this.distSegmentToPoint(saber.base, saber.tip, cubePos);
 
-    // 2. Previous frame distance (prevent fast tunneling)
+    // 2. Previous frame blade distance (prevents fast tunneling)
     const distPrev = this.distSegmentToPoint(saber.prevBase, saber.prevTip, cubePos);
 
-    // 3. Midpoint swept segment
+    // 3. Midpoint swept blade segment
     const midBase = saber.base.clone().add(saber.prevBase).multiplyScalar(0.5);
     const midTip = saber.tip.clone().add(saber.prevTip).multiplyScalar(0.5);
     const distMid = this.distSegmentToPoint(midBase, midTip, cubePos);
 
-    const minDist = Math.min(distCurr, distPrev, distMid);
+    // 4. Hand fist base distance (punching forward with fist hits directly!)
+    const distHand = Math.min(
+      saber.base.distanceTo(cubePos),
+      saber.prevBase.distanceTo(cubePos)
+    );
+
+    const minDist = Math.min(distCurr, distPrev, distMid, distHand);
 
     if (minDist <= cubeRadius) {
       cube.isHit = true;
 
-      // 1. Validate saber color
-      const isCorrectColor = cube.note.type === saberColor;
+      // Color match or single-hand play
+      const isMatchingColor = (cube.note.type === saberColor) || handTracker.isSingleHandMode;
+      const isFastSlash = (saber.speed > 1.6);
 
-      // 2. Validate cut direction with vector dot product
-      const vx = saber.velocity.x;
-      const vy = saber.velocity.y;
-      const swingSpeed = saber.speed;
+      // Hit quality: PERFECT for color match or fast slash, GREAT for any other hit
+      const isPerfect = isMatchingColor || isFastSlash;
+      const rating = isPerfect ? 'PERFECT' : 'GREAT';
 
-      let isCorrectDirection = false;
-      const reqDir = cube.note.cutDirection;
+      gameState.registerHit(
+        rating,
+        saberColor,
+        { x: cubePos.x, y: cubePos.y, z: cubePos.z }
+      );
 
-      if (reqDir === 'ANY') {
-        isCorrectDirection = true;
-      } else {
-        const velLen = Math.hypot(vx, vy);
-        if (velLen > 0.2) {
-          const nx = vx / velLen;
-          const ny = vy / velLen;
+      soundSynth.playSlice(saberColor, isPerfect);
 
-          let targetX = 0;
-          let targetY = 0;
-          if (reqDir === 'DOWN') targetY = -1;
-          else if (reqDir === 'UP') targetY = 1;
-          else if (reqDir === 'LEFT') targetX = -1;
-          else if (reqDir === 'RIGHT') targetX = 1;
-
-          const dot = nx * targetX + ny * targetY;
-          // Generous angle tolerance: accept cut as long as it's not backwards
-          if (dot > -0.25) {
-            isCorrectDirection = true;
-          }
-        } else if (swingSpeed > 1.2) {
-          // If swinging with good speed, accept
-          isCorrectDirection = true;
-        }
-      }
-
-      if (isCorrectColor && isCorrectDirection) {
-        // Good cut!
-        gameState.registerCut(
-          saberColor,
-          { x: cubePos.x, y: cubePos.y, z: cubePos.z },
-          swingSpeed,
-          Math.max(0.6, 1.0 - minDist / cubeRadius)
-        );
-        soundSynth.playSlice(saberColor, true);
-
-        // Spawn glowing cut halves and spark explosion
-        this.spawnCutHalves(cube, reqDir);
-        this.particleSystem.burst(cubePos.x, cubePos.y, cubePos.z, saberColor, 55, 7.5);
-      } else {
-        // Bad cut (wrong color or inverted slice)
-        gameState.registerBadCut(cube.note.type as 'red' | 'blue', { x: cubePos.x, y: cubePos.y, z: cubePos.z });
-        soundSynth.playSlice(saberColor, false);
-        this.spawnCutHalves(cube, reqDir);
-        this.particleSystem.burst(cubePos.x, cubePos.y, cubePos.z, 'yellow', 30, 4.0);
-      }
+      // Spawn glowing cut halves and spark explosion
+      this.spawnCutHalves(cube, cube.note.cutDirection || 'ANY');
+      this.particleSystem.burst(
+        cubePos.x,
+        cubePos.y,
+        cubePos.z,
+        saberColor,
+        isPerfect ? 50 : 30,
+        isPerfect ? 7.0 : 4.5
+      );
 
       // Remove sliced cube from scene
       this.scene.remove(cube.mesh);

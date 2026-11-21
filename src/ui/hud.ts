@@ -15,6 +15,7 @@ export class GameHUD {
   private progressFillEl: HTMLElement;
   private timeDisplayEl: HTMLElement;
   private trackTitleEl: HTMLElement;
+  private handStatusEl: HTMLElement;
 
   private floatingTagsContainer: HTMLDivElement;
 
@@ -28,6 +29,7 @@ export class GameHUD {
           <span class="track-badge">TRACK</span>
           <span id="hud-track-name" class="track-name">Cyberpunk Neon Pulse</span>
         </div>
+        <div id="hud-hand-badge" class="hud-hand-status-badge ready">⚡ RUCE AKTIVNÍ (READY)</div>
         <div class="hud-timeline-wrap">
           <div class="hud-timeline-track">
             <div id="hud-timeline-fill" class="hud-timeline-fill"></div>
@@ -92,6 +94,7 @@ export class GameHUD {
     this.progressFillEl = this.container.querySelector('#hud-timeline-fill')!;
     this.timeDisplayEl = this.container.querySelector('#hud-time-display')!;
     this.trackTitleEl = this.container.querySelector('#hud-track-name')!;
+    this.handStatusEl = this.container.querySelector('#hud-hand-badge')!;
     this.floatingTagsContainer = this.container.querySelector('#hud-floating-tags')!;
 
     // Listen to game state events
@@ -110,6 +113,18 @@ export class GameHUD {
 
   public setVisible(visible: boolean) {
     this.container.style.display = visible ? 'flex' : 'none';
+  }
+
+  public updateHandStatus(hasHands: boolean) {
+    if (this.handStatusEl) {
+      if (hasHands) {
+        this.handStatusEl.textContent = '⚡ RUCE AKTIVNÍ (READY)';
+        this.handStatusEl.className = 'hud-hand-status-badge ready';
+      } else {
+        this.handStatusEl.textContent = '📷 ZVEDNĚTE RUCE PŘED KAMERU';
+        this.handStatusEl.className = 'hud-hand-status-badge waiting';
+      }
+    }
   }
 
   public updateTimeline(currentTime: number, duration: number) {
@@ -163,7 +178,7 @@ export class GameHUD {
     const tag = document.createElement('div');
     tag.className = `floating-hit-tag hit-${hit.rating.toLowerCase()} color-${hit.color}`;
 
-    const label = hit.rating === 'PERFECT' ? '115 PERFECT' : hit.rating === 'GREAT' ? `${hit.score} GREAT` : hit.rating === 'GOOD' ? `${hit.score}` : 'BAD CUT';
+    const label = hit.rating === 'PERFECT' ? '⚡ 115 PERFECT' : hit.rating === 'GREAT' ? `✨ ${hit.score} GREAT` : `👍 ${hit.score}`;
     tag.textContent = label;
 
     // Slight random scatter around center

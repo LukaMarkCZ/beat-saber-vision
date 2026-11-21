@@ -187,8 +187,9 @@ class BeatSaberApp {
       this.cubeManager.update(songTime, dt, this.saberManager);
       this.bombManager.update(songTime, dt, this.saberManager);
 
-      // Update HUD progress bar
+      // Update HUD progress bar and hand status
       this.hud.updateTimeline(songTime, songDuration);
+      this.hud.updateHandStatus(handTracker.hasAnyHand);
 
       // Check Game Over (health <= 0)
       if (gameState.isGameOver) {

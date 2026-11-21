@@ -117,10 +117,10 @@ export class GameState {
     this.health = Math.min(this.maxHealth, this.health + 4.5);
 
     let rating: 'PERFECT' | 'GREAT' | 'GOOD' = 'GOOD';
-    if (baseScore >= 110) {
+    if (baseScore >= 105) {
       rating = 'PERFECT';
       this.perfectCuts++;
-    } else if (baseScore >= 95) {
+    } else if (baseScore >= 90) {
       rating = 'GREAT';
       this.greatCuts++;
     } else {
@@ -140,20 +140,39 @@ export class GameState {
     if (this.onStateChange) this.onStateChange();
   }
 
-  public registerBadCut(color: 'red' | 'blue', position: { x: number; y: number; z: number }) {
-    this.combo = 0;
-    this.multiplier = 1;
-    this.badCuts++;
-    this.score += 20;
-    if (!this.noFailMode) {
-      this.health = Math.max(0, this.health - 4);
-      if (this.health <= 0) this.isGameOver = true;
+  public registerHit(
+    rating: 'PERFECT' | 'GREAT' | 'GOOD',
+    color: 'red' | 'blue',
+    position: { x: number; y: number; z: number }
+  ) {
+    this.combo++;
+    if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+
+    if (this.combo >= 12) {
+      this.multiplier = 8;
+    } else if (this.combo >= 6) {
+      this.multiplier = 4;
+    } else if (this.combo >= 2) {
+      this.multiplier = 2;
+    } else {
+      this.multiplier = 1;
     }
+
+    const baseScore = rating === 'PERFECT' ? 115 : rating === 'GREAT' ? 100 : 80;
+    if (rating === 'PERFECT') this.perfectCuts++;
+    else if (rating === 'GREAT') this.greatCuts++;
+    else this.goodCuts++;
+
+    const earnedScore = baseScore * this.multiplier;
+    this.score += earnedScore;
+
+    // Generous health recovery on any hit
+    this.health = Math.min(this.maxHealth, this.health + 5.0);
 
     if (this.onHitCallback) {
       this.onHitCallback({
-        score: 20,
-        rating: 'BAD',
+        score: earnedScore,
+        rating,
         color,
         position
       });
@@ -162,12 +181,17 @@ export class GameState {
     if (this.onStateChange) this.onStateChange();
   }
 
+  public registerBadCut(color: 'red' | 'blue', position: { x: number; y: number; z: number }) {
+    // Forgiving hit: Never punish contact with BAD CUT! Convert to satisfying GREAT hit!
+    this.registerHit('GREAT', color, position);
+  }
+
   public registerMiss() {
     this.combo = 0;
     this.multiplier = 1;
     this.missedNotes++;
     if (!this.noFailMode) {
-      this.health = Math.max(0, this.health - 6);
+      this.health = Math.max(0, this.health - 4.0);
       if (this.health <= 0) this.isGameOver = true;
     }
 

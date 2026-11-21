@@ -99,6 +99,16 @@ class SingleSaber {
     this.tipLight.position.set(0, this.bladeLength, 0);
     this.group.add(this.tipLight);
 
+    // 4. Glowing Plasma Hand Orb (visualizes exact hand position in 3D)
+    const handOrbGeo = new THREE.SphereGeometry(0.065, 16, 16);
+    const handOrbMat = new THREE.MeshBasicMaterial({
+      color: this.primaryColor,
+      transparent: true,
+      opacity: 0.8
+    });
+    const handOrb = new THREE.Mesh(handOrbGeo, handOrbMat);
+    this.group.add(handOrb);
+
     scene.add(this.group);
 
     // 5. Dynamic Motion Trail Ribbon
@@ -142,6 +152,9 @@ class SingleSaber {
   }
 
   public update(pose: SaberPose, now: number) {
+    this.group.visible = pose.isTracking;
+    this.trailMesh.visible = pose.isTracking;
+
     // 1. Update position
     this.group.position.set(pose.position.x, pose.position.y, pose.position.z);
 
