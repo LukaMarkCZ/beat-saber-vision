@@ -1049,6 +1049,22 @@ html, body {
   accent-color: var(--neon-cyan);
 }
 
+.cyber-select {
+  background: rgba(18, 24, 48, 0.8);
+  border: 1px solid var(--border-glass);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+}
+
+.cyber-select:focus {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
 /* ==========================================================================
    RESPONSIVENESS
    ========================================================================== */

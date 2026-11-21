@@ -25,14 +25,14 @@ export class HandTracker {
   private mirror = true;
 
   // Sensitivity & calibration offsets
-  public sensitivityX = 3.2;
-  public sensitivityY = 2.4;
+  public sensitivityX = 4.2;
+  public sensitivityY = 3.2;
   public offsetX = 0.0;
-  public offsetY = 1.25;
-  public offsetZ = 0.2;
+  public offsetY = 1.2;
+  public offsetZ = 0.15;
 
   // Smoothing parameter (0 to 1, higher = faster response, lower = smoother)
-  private alpha = 0.45;
+  private baseAlpha = 0.42;
 
   // Internal state for Left and Right hands
   public leftSaber: SaberPose = {
@@ -137,8 +137,8 @@ export class HandTracker {
 
     hands.setOptions({
       maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.55,
+      modelComplexity: 0, // 0 = ultra-fast mobile optimized model
+      minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
 
@@ -152,8 +152,8 @@ export class HandTracker {
             await hands.send({ image: this.videoElement });
           }
         },
-        width: 640,
-        height: 480
+        width: 480,
+        height: 360
       });
       camera.start();
     } else {
@@ -246,27 +246,32 @@ export class HandTracker {
     // Palm center
     const palmX = (wrist.x + indexMcp.x + middleMcp.x) / 3;
     const palmY = (wrist.y + indexMcp.y + middleMcp.y) / 3;
-    const palmZ = (wrist.z + indexMcp.z + middleMcp.z) / 3;
 
     // Map normalized [0, 1] screen coordinates to 3D world space
-    // In mirror mode, invert X
     const normX = this.mirror ? 1.0 - palmX : palmX;
     const normY = palmY;
 
     // Convert to world space
     const targetX = (normX - 0.5) * this.sensitivityX + this.offsetX;
     const targetY = (1.0 - normY) * this.sensitivityY + (this.offsetY - this.sensitivityY * 0.5);
-    const targetZ = -palmZ * 2.0 + this.offsetZ;
+    const targetZ = this.offsetZ;
 
-    // Exponential Moving Average smoothing
-    saber.position.x += (targetX - saber.position.x) * this.alpha;
-    saber.position.y += (targetY - saber.position.y) * this.alpha;
-    saber.position.z += (targetZ - saber.position.z) * this.alpha;
+    // Dynamic smoothing: if moving fast, increase response immediately to eliminate lag
+    const moveDist = Math.hypot(targetX - saber.position.x, targetY - saber.position.y);
+    const currentAlpha = Math.min(0.92, Math.max(this.baseAlpha, moveDist * 3.5));
+
+    saber.position.x += (targetX - saber.position.x) * currentAlpha;
+    saber.position.y += (targetY - saber.position.y) * currentAlpha;
+    saber.position.z += (targetZ - saber.position.z) * currentAlpha;
 
     // Compute hand pointing vector (blade direction)
-    const dirX = (this.mirror ? -(indexTip.x - wrist.x) : (indexTip.x - wrist.x));
-    const dirY = -(indexTip.y - wrist.y);
-    const dirZ = -(indexTip.z - wrist.z) - 0.5; // bias forward into the screen
+    const rawDx = (this.mirror ? -(indexTip.x - wrist.x) : (indexTip.x - wrist.x));
+    const rawDy = -(indexTip.y - wrist.y);
+
+    // Blade primarily points forward along -Z, tilted by hand angle
+    const dirX = rawDx * 1.5;
+    const dirY = rawDy * 1.5 + 0.25;
+    const dirZ = -0.85;
 
     const len = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ) || 1;
     saber.direction.x = dirX / len;
@@ -286,6 +291,20 @@ export class HandTracker {
     prevPos.x = saber.position.x;
     prevPos.y = saber.position.y;
     prevPos.z = saber.position.z;
+  }
+
+  /**
+   * Recalibrate center: sets offset so current hand positions are centered at chest height
+   */
+  public calibrate() {
+    if (this.rawLandmarksLeft && this.rawLandmarksRight) {
+      const avgY = (this.rawLandmarksLeft[0].y + this.rawLandmarksRight[0].y) / 2;
+      this.offsetY = (1.0 - avgY) * this.sensitivityY;
+    } else if (this.rawLandmarksLeft) {
+      this.offsetY = (1.0 - this.rawLandmarksLeft[0].y) * this.sensitivityY;
+    } else if (this.rawLandmarksRight) {
+      this.offsetY = (1.0 - this.rawLandmarksRight[0].y) * this.sensitivityY;
+    }
   }
 
   /**

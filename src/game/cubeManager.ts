@@ -42,9 +42,10 @@ export class CubeManager {
   private blueMat: THREE.MeshStandardMaterial;
   private arrowTextures: Map<string, THREE.CanvasTexture> = new Map();
 
-  // Lane coordinates: 4 horizontal columns x 2 vertical rows
-  public static LANE_X = [-1.2, -0.4, 0.4, 1.2];
-  public static LANE_Y = [0.9, 1.5];
+  // Lane coordinates: 4 horizontal columns x 2 vertical rows (optimized for human arm wingspan)
+  public static LANE_X = [-0.85, -0.28, 0.28, 0.85];
+  public static LANE_Y = [0.95, 1.45];
+  public speedMultiplier = 1.0;
 
   constructor(scene: THREE.Scene, particleSystem: ParticleSystem) {
     this.scene = scene;
@@ -259,16 +260,17 @@ export class CubeManager {
     for (let i = this.activeCubes.length - 1; i >= 0; i--) {
       const cube = this.activeCubes[i];
 
-      // Exact Z position based on song time
+      // Exact Z position based on song time & speed multiplier
+      const effectiveSpeed = this.trackSpeed * this.speedMultiplier;
       const timeRemaining = cube.note.time - songTime;
-      const targetZ = -timeRemaining * this.trackSpeed;
+      const targetZ = -timeRemaining * effectiveSpeed;
       cube.mesh.position.z = targetZ;
 
       // Update bounding box
       cube.box.setFromObject(cube.mesh);
 
-      // Check collision with both sabers if cube is in player's slice zone
-      if (!cube.isHit && cube.mesh.position.z >= -1.4 && cube.mesh.position.z <= 0.8) {
+      // Check collision with both sabers in an expanded slice zone
+      if (!cube.isHit && cube.mesh.position.z >= -1.8 && cube.mesh.position.z <= 1.1) {
         this.checkSaberIntersection(cube, saberManager.leftSaber.segment, 'red', i);
         if (!cube.isHit) {
           this.checkSaberIntersection(cube, saberManager.rightSaber.segment, 'blue', i);
@@ -312,7 +314,24 @@ export class CubeManager {
   }
 
   /**
-   * Distance test between saber line segment and cube bounding sphere / OBB
+   * Distance test between saber line segment and cube center
+   */
+  private distSegmentToPoint(base: THREE.Vector3, tip: THREE.Vector3, point: THREE.Vector3): number {
+    const segDir = tip.clone().sub(base);
+    const segLen = segDir.length();
+    if (segLen === 0) return base.distanceTo(point);
+    segDir.normalize();
+
+    const toPoint = point.clone().sub(base);
+    const projection = toPoint.dot(segDir);
+    const clampedProj = Math.max(0, Math.min(segLen, projection));
+    const closestPoint = base.clone().add(segDir.multiplyScalar(clampedProj));
+
+    return closestPoint.distanceTo(point);
+  }
+
+  /**
+   * Swept continuous collision detection: tests current frame, previous frame, and midpoint
    */
   private checkSaberIntersection(
     cube: ActiveCube,
@@ -321,28 +340,28 @@ export class CubeManager {
     cubeIndex: number
   ) {
     const cubePos = cube.mesh.position;
-    const cubeRadius = 0.38;
+    const cubeRadius = 0.58; // Forgiving hit radius to ensure crisp, satisfying cuts
 
-    // Segment closest point to cube center
-    const segDir = saber.tip.clone().sub(saber.base);
-    const segLen = segDir.length();
-    if (segLen === 0) return;
-    segDir.normalize();
+    // 1. Current frame distance
+    const distCurr = this.distSegmentToPoint(saber.base, saber.tip, cubePos);
 
-    const toCube = cubePos.clone().sub(saber.base);
-    const projection = toCube.dot(segDir);
-    const clampedProj = Math.max(0, Math.min(segLen, projection));
-    const closestPoint = saber.base.clone().add(segDir.multiplyScalar(clampedProj));
+    // 2. Previous frame distance (prevent fast tunneling)
+    const distPrev = this.distSegmentToPoint(saber.prevBase, saber.prevTip, cubePos);
 
-    const dist = closestPoint.distanceTo(cubePos);
+    // 3. Midpoint swept segment
+    const midBase = saber.base.clone().add(saber.prevBase).multiplyScalar(0.5);
+    const midTip = saber.tip.clone().add(saber.prevTip).multiplyScalar(0.5);
+    const distMid = this.distSegmentToPoint(midBase, midTip, cubePos);
 
-    if (dist <= cubeRadius) {
+    const minDist = Math.min(distCurr, distPrev, distMid);
+
+    if (minDist <= cubeRadius) {
       cube.isHit = true;
 
       // 1. Validate saber color
       const isCorrectColor = cube.note.type === saberColor;
 
-      // 2. Validate cut direction
+      // 2. Validate cut direction with vector dot product
       const vx = saber.velocity.x;
       const vy = saber.velocity.y;
       const swingSpeed = saber.speed;
@@ -352,17 +371,28 @@ export class CubeManager {
 
       if (reqDir === 'ANY') {
         isCorrectDirection = true;
-      } else if (reqDir === 'DOWN' && vy < -0.4) {
-        isCorrectDirection = true;
-      } else if (reqDir === 'UP' && vy > 0.4) {
-        isCorrectDirection = true;
-      } else if (reqDir === 'LEFT' && vx < -0.4) {
-        isCorrectDirection = true;
-      } else if (reqDir === 'RIGHT' && vx > 0.4) {
-        isCorrectDirection = true;
-      } else if (swingSpeed > 3.0) {
-        // Forgiving tolerance for fast natural swings
-        isCorrectDirection = true;
+      } else {
+        const velLen = Math.hypot(vx, vy);
+        if (velLen > 0.2) {
+          const nx = vx / velLen;
+          const ny = vy / velLen;
+
+          let targetX = 0;
+          let targetY = 0;
+          if (reqDir === 'DOWN') targetY = -1;
+          else if (reqDir === 'UP') targetY = 1;
+          else if (reqDir === 'LEFT') targetX = -1;
+          else if (reqDir === 'RIGHT') targetX = 1;
+
+          const dot = nx * targetX + ny * targetY;
+          // Generous angle tolerance: accept cut as long as it's not backwards
+          if (dot > -0.25) {
+            isCorrectDirection = true;
+          }
+        } else if (swingSpeed > 1.2) {
+          // If swinging with good speed, accept
+          isCorrectDirection = true;
+        }
       }
 
       if (isCorrectColor && isCorrectDirection) {
@@ -371,7 +401,7 @@ export class CubeManager {
           saberColor,
           { x: cubePos.x, y: cubePos.y, z: cubePos.z },
           swingSpeed,
-          Math.max(0.6, 1.0 - dist / cubeRadius)
+          Math.max(0.6, 1.0 - minDist / cubeRadius)
         );
         soundSynth.playSlice(saberColor, true);
 

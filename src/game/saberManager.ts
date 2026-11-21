@@ -9,6 +9,8 @@ import { soundSynth } from '../audio/soundSynth';
 export interface SaberSegment {
   base: THREE.Vector3;
   tip: THREE.Vector3;
+  prevBase: THREE.Vector3;
+  prevTip: THREE.Vector3;
   direction: THREE.Vector3;
   velocity: THREE.Vector3;
   speed: number;
@@ -30,13 +32,15 @@ class SingleSaber {
   private maxTrailSteps = 14;
 
   public colorType: 'red' | 'blue';
-  public bladeLength = 1.05;
+  public bladeLength = 1.15;
   private primaryColor: THREE.Color;
 
   // Collision state
   public segment: SaberSegment = {
     base: new THREE.Vector3(),
     tip: new THREE.Vector3(),
+    prevBase: new THREE.Vector3(),
+    prevTip: new THREE.Vector3(),
     direction: new THREE.Vector3(0, 0, -1),
     velocity: new THREE.Vector3(),
     speed: 0
@@ -148,6 +152,9 @@ class SingleSaber {
     this.group.setRotationFromQuaternion(quat);
 
     // 3. Compute world space base and tip
+    this.segment.prevBase.copy(this.segment.base);
+    this.segment.prevTip.copy(this.segment.tip);
+
     const baseWorld = this.group.position.clone();
     const tipWorld = baseWorld.clone().add(dir.clone().multiplyScalar(this.bladeLength));
 

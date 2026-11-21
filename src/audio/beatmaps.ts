@@ -160,8 +160,18 @@ export function generateProceduralBeatmap(
   return notes;
 }
 
-/** Pre-packaged tracks */
+/** Pre-packaged tracks with tuned playable speeds */
 export const PRESET_TRACKS: SongTrack[] = [
+  {
+    id: 'track-chillwave',
+    title: 'Tokyo Midnight Dream',
+    artist: 'Neon Sunset',
+    bpm: 105,
+    difficulty: 'EASY',
+    duration: 80,
+    speed: 12.0,
+    notes: generateProceduralBeatmap(105, 80, 'EASY')
+  },
   {
     id: 'track-cyberwave',
     title: 'Cyberpunk Neon Pulse',
@@ -169,7 +179,7 @@ export const PRESET_TRACKS: SongTrack[] = [
     bpm: 128,
     difficulty: 'NORMAL',
     duration: 75,
-    speed: 21,
+    speed: 14.5,
     notes: generateProceduralBeatmap(128, 75, 'NORMAL')
   },
   {
@@ -179,17 +189,7 @@ export const PRESET_TRACKS: SongTrack[] = [
     bpm: 140,
     difficulty: 'EXPERT',
     duration: 65,
-    speed: 25,
+    speed: 17.5,
     notes: generateProceduralBeatmap(140, 65, 'EXPERT')
-  },
-  {
-    id: 'track-chillwave',
-    title: 'Tokyo Midnight Dream',
-    artist: 'Neon Sunset',
-    bpm: 105,
-    difficulty: 'EASY',
-    duration: 80,
-    speed: 17,
-    notes: generateProceduralBeatmap(105, 80, 'EASY')
   }
 ];

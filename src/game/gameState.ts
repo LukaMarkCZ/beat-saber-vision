@@ -27,6 +27,7 @@ export class GameState {
 
   public isGameOver = false;
   public isVictory = false;
+  public noFailMode = true; // Enabled by default for practice & webcam tolerance!
 
   private onStateChange: (() => void) | null = null;
   private onHitCallback: ((hit: HitResult) => void) | null = null;
@@ -144,10 +145,9 @@ export class GameState {
     this.multiplier = 1;
     this.badCuts++;
     this.score += 20;
-    this.health = Math.max(0, this.health - 6);
-
-    if (this.health <= 0) {
-      this.isGameOver = true;
+    if (!this.noFailMode) {
+      this.health = Math.max(0, this.health - 4);
+      if (this.health <= 0) this.isGameOver = true;
     }
 
     if (this.onHitCallback) {
@@ -166,10 +166,9 @@ export class GameState {
     this.combo = 0;
     this.multiplier = 1;
     this.missedNotes++;
-    this.health = Math.max(0, this.health - 12);
-
-    if (this.health <= 0) {
-      this.isGameOver = true;
+    if (!this.noFailMode) {
+      this.health = Math.max(0, this.health - 6);
+      if (this.health <= 0) this.isGameOver = true;
     }
 
     if (this.onStateChange) this.onStateChange();
@@ -178,10 +177,9 @@ export class GameState {
   public registerBombHit() {
     this.combo = 0;
     this.multiplier = 1;
-    this.health = Math.max(0, this.health - 22);
-
-    if (this.health <= 0) {
-      this.isGameOver = true;
+    if (!this.noFailMode) {
+      this.health = Math.max(0, this.health - 15);
+      if (this.health <= 0) this.isGameOver = true;
     }
 
     if (this.onStateChange) this.onStateChange();

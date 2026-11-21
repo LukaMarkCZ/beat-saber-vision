@@ -83,6 +83,10 @@ class BeatSaberApp {
       this.startGame(track);
     });
 
+    this.menu.onSpeedChange = (mult: number) => {
+      this.cubeManager.speedMultiplier = mult;
+    };
+
     // HUD: Pause
     this.hud.setOnPause(() => {
       this.pauseGame();

@@ -6,6 +6,7 @@ import { PRESET_TRACKS, type SongTrack } from '../audio/beatmaps';
 import { handTracker } from '../vision/handTracker';
 import { soundSynth } from '../audio/soundSynth';
 import { musicEngine } from '../audio/musicEngine';
+import { gameState } from '../game/gameState';
 
 export class MainMenu {
   private container: HTMLDivElement;
@@ -85,13 +86,31 @@ export class MainMenu {
           </div>
           <div class="settings-body">
             <div class="setting-item">
-              <label>Mirror Camera View</label>
+              <label>No-Fail Mode (Neomezené životy)</label>
+              <input id="setting-nofail-chk" type="checkbox" checked />
+            </div>
+            <div class="setting-item">
+              <label>Speed Modifier</label>
+              <select id="setting-speed-select" class="cyber-select">
+                <option value="0.8">0.8x (Pomalé / Trénink)</option>
+                <option value="1.0" selected>1.0x (Normální)</option>
+                <option value="1.2">1.2x (Rychlé)</option>
+              </select>
+            </div>
+            <div class="setting-item">
+              <label>Mirror Camera View (Zrcadlení)</label>
               <input id="setting-mirror-chk" type="checkbox" checked />
             </div>
             <div class="setting-item">
-              <label>Saber Reach Sensitivity</label>
-              <input id="setting-sensitivity-range" type="range" min="1.8" max="4.5" step="0.1" value="3.2" />
-              <span id="setting-sensitivity-val">3.2x</span>
+              <label>Saber Reach (Citlivost dosahu)</label>
+              <input id="setting-sensitivity-range" type="range" min="2.5" max="6.0" step="0.2" value="4.2" />
+              <span id="setting-sensitivity-val">4.2x</span>
+            </div>
+            <div class="setting-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+              <button id="setting-calibrate-btn" class="cyber-btn-secondary" style="width: 100%; border-color: var(--neon-cyan);">
+                🎯 VYCENTROVAT RUCE (CALIBRATE)
+              </button>
+              <span style="font-size: 11px; color: var(--text-muted); text-align: center;">Podržte ruce před hrudníkem a klikněte pro vycentrování</span>
             </div>
             <div class="setting-item">
               <label>Music Volume</label>
@@ -258,5 +277,29 @@ export class MainMenu {
     sfxVol.addEventListener('input', () => {
       soundSynth.setVolume(parseFloat(sfxVol.value));
     });
+
+    const noFailChk = this.container.querySelector('#setting-nofail-chk') as HTMLInputElement;
+    noFailChk.addEventListener('change', () => {
+      gameState.noFailMode = noFailChk.checked;
+    });
+
+    const speedSelect = this.container.querySelector('#setting-speed-select') as HTMLSelectElement;
+    speedSelect.addEventListener('change', () => {
+      if (this.onSpeedChange) {
+        this.onSpeedChange(parseFloat(speedSelect.value));
+      }
+    });
+
+    const calibrateBtn = this.container.querySelector('#setting-calibrate-btn') as HTMLButtonElement;
+    calibrateBtn.addEventListener('click', () => {
+      soundSynth.playComboMilestone(2);
+      handTracker.calibrate();
+      calibrateBtn.textContent = '✓ VYCENTROVÁNO!';
+      setTimeout(() => {
+        calibrateBtn.textContent = '🎯 VYCENTROVAT RUCE (CALIBRATE)';
+      }, 1500);
+    });
   }
+
+  public onSpeedChange: ((mult: number) => void) | null = null;
 }
