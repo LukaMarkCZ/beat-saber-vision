@@ -1,5 +1,10 @@
 /**
- * MediaPipe Hands Tracker with Exponential Smoothing and 3D Vector Mapping
+ * Input Manager: MediaPipe Hands, Mouse, and Dual-Touch Saber Control
+ * 
+ * Three input modes:
+ * - WEBCAM: MediaPipe hand tracking with 60/120 FPS interpolation
+ * - MOUSE:  Single pointer controls both sabers
+ * - TOUCH:  Left half of screen = Red saber, Right half = Blue saber (best for tablets!)
  */
 
 export interface HandLandmark {
@@ -16,7 +21,7 @@ export interface SaberPose {
   isTracking: boolean;
 }
 
-export type InputMode = 'WEBCAM' | 'MOUSE';
+export type InputMode = 'WEBCAM' | 'MOUSE' | 'TOUCH';
 
 export class HandTracker {
   private videoElement: HTMLVideoElement | null = null;
@@ -64,15 +69,33 @@ export class HandTracker {
   // Mouse fallback coordinates
   private mousePos = { x: 0, y: 1.2 };
 
+  // === DUAL TOUCH STATE ===
+  private touchLeftActive = false;
+  private touchRightActive = false;
+  private touchLeftPos = { x: -0.5, y: 1.2 };
+  private touchRightPos = { x: 0.5, y: 1.2 };
+  private touchLeftPrev = { x: -0.5, y: 1.2 };
+  private touchRightPrev = { x: 0.5, y: 1.2 };
+  private touchLeftId: number | null = null;
+  private touchRightId: number | null = null;
+
   // Callback on results
   private onResultsCallback: ((results: any) => void) | null = null;
 
   constructor() {
     this.setupMouseFallback();
+    this.setupTouchControls();
   }
 
   public setInputMode(mode: InputMode) {
     this.inputMode = mode;
+    // Reset touch state when switching modes
+    if (mode !== 'TOUCH') {
+      this.touchLeftActive = false;
+      this.touchRightActive = false;
+      this.touchLeftId = null;
+      this.touchRightId = null;
+    }
   }
 
   public getInputMode(): InputMode {
@@ -92,10 +115,15 @@ export class HandTracker {
   }
 
   public get hasAnyHand(): boolean {
+    if (this.inputMode === 'TOUCH') return this.touchLeftActive || this.touchRightActive;
+    if (this.inputMode === 'MOUSE') return true;
     return this.leftSaber.isTracking || this.rightSaber.isTracking;
   }
 
   public get isSingleHandMode(): boolean {
+    if (this.inputMode === 'TOUCH') {
+      return (this.touchLeftActive !== this.touchRightActive);
+    }
     return (this.leftSaber.isTracking !== this.rightSaber.isTracking);
   }
 
@@ -122,8 +150,13 @@ export class HandTracker {
       this.isRunning = true;
       return true;
     } catch (err) {
-      console.warn('Webcam access failed or denied. Falling back to mouse saber mode.', err);
-      this.inputMode = 'MOUSE';
+      console.warn('Webcam access failed or denied. Falling back to touch/mouse saber mode.', err);
+      // Auto-detect: if touch device, default to TOUCH mode
+      if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+        this.inputMode = 'TOUCH';
+      } else {
+        this.inputMode = 'MOUSE';
+      }
       return false;
     }
   }
@@ -136,8 +169,12 @@ export class HandTracker {
     }
 
     if (!win.Hands) {
-      console.warn('MediaPipe Hands library could not be loaded. Operating in mouse mode.');
-      this.inputMode = 'MOUSE';
+      console.warn('MediaPipe Hands library could not be loaded. Operating in touch/mouse mode.');
+      if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+        this.inputMode = 'TOUCH';
+      } else {
+        this.inputMode = 'MOUSE';
+      }
       return;
     }
 
@@ -320,7 +357,7 @@ export class HandTracker {
   }
 
   /**
-   * Mouse and Touch Fallback mode
+   * Mouse Fallback mode (single pointer controls both sabers)
    */
   private setupMouseFallback() {
     window.addEventListener('mousemove', (e) => {
@@ -331,58 +368,108 @@ export class HandTracker {
       this.mousePos.x = (normX - 0.5) * 3.0;
       this.mousePos.y = (1.0 - normY) * 2.0 + 0.3;
     });
+  }
+
+  /**
+   * DUAL TOUCH CONTROLS — The key tablet playability feature!
+   * 
+   * Left half of screen → Red saber (left hand)
+   * Right half of screen → Blue saber (right hand)
+   * 
+   * Each finger independently controls its saber with full velocity tracking.
+   * Swiping generates high speed → easy to trigger hits.
+   */
+  private setupTouchControls() {
+    const mapTouchToWorld = (clientX: number, clientY: number) => {
+      const normX = clientX / window.innerWidth;
+      const normY = clientY / window.innerHeight;
+      return {
+        x: (normX - 0.5) * 3.2,
+        y: (1.0 - normY) * 2.4 + 0.2
+      };
+    };
+
+    window.addEventListener('touchstart', (e) => {
+      if (this.inputMode !== 'TOUCH') return;
+      e.preventDefault();
+
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        const halfW = window.innerWidth / 2;
+        const worldPos = mapTouchToWorld(touch.clientX, touch.clientY);
+
+        if (touch.clientX < halfW) {
+          // Left side → Red saber
+          this.touchLeftId = touch.identifier;
+          this.touchLeftActive = true;
+          this.touchLeftPrev.x = worldPos.x;
+          this.touchLeftPrev.y = worldPos.y;
+          this.touchLeftPos.x = worldPos.x;
+          this.touchLeftPos.y = worldPos.y;
+        } else {
+          // Right side → Blue saber
+          this.touchRightId = touch.identifier;
+          this.touchRightActive = true;
+          this.touchRightPrev.x = worldPos.x;
+          this.touchRightPrev.y = worldPos.y;
+          this.touchRightPos.x = worldPos.x;
+          this.touchRightPos.y = worldPos.y;
+        }
+      }
+    }, { passive: false });
 
     window.addEventListener('touchmove', (e) => {
-      if (this.inputMode !== 'MOUSE' || e.touches.length === 0) return;
-      const touch = e.touches[0];
-      const normX = touch.clientX / window.innerWidth;
-      const normY = touch.clientY / window.innerHeight;
+      if (this.inputMode !== 'TOUCH') return;
+      e.preventDefault();
 
-      this.mousePos.x = (normX - 0.5) * 3.0;
-      this.mousePos.y = (1.0 - normY) * 2.0 + 0.3;
-    }, { passive: true });
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        const worldPos = mapTouchToWorld(touch.clientX, touch.clientY);
+
+        if (touch.identifier === this.touchLeftId) {
+          this.touchLeftPrev.x = this.touchLeftPos.x;
+          this.touchLeftPrev.y = this.touchLeftPos.y;
+          this.touchLeftPos.x = worldPos.x;
+          this.touchLeftPos.y = worldPos.y;
+        } else if (touch.identifier === this.touchRightId) {
+          this.touchRightPrev.x = this.touchRightPos.x;
+          this.touchRightPrev.y = this.touchRightPos.y;
+          this.touchRightPos.x = worldPos.x;
+          this.touchRightPos.y = worldPos.y;
+        }
+      }
+    }, { passive: false });
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (this.inputMode !== 'TOUCH') return;
+
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        if (touch.identifier === this.touchLeftId) {
+          this.touchLeftActive = false;
+          this.touchLeftId = null;
+        } else if (touch.identifier === this.touchRightId) {
+          this.touchRightActive = false;
+          this.touchRightId = null;
+        }
+      }
+    };
+
+    window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('touchcancel', handleTouchEnd);
   }
 
   /**
    * Update called every frame in game loop
    */
   public update(dt: number) {
+    if (this.inputMode === 'TOUCH') {
+      this.updateTouchSabers(dt);
+      return;
+    }
+
     if (this.inputMode === 'MOUSE') {
-      // In mouse mode, position left and right sabers centered or controlled
-      const targetLeftX = this.mousePos.x - 0.45;
-      const targetRightX = this.mousePos.x + 0.45;
-      const targetY = this.mousePos.y;
-
-      const updateMouseSaber = (saber: SaberPose, prevPos: { x: number; y: number; z: number }, targetX: number) => {
-        const vx = (targetX - saber.position.x) / dt;
-        const vy = (targetY - saber.position.y) / dt;
-
-        saber.position.x += (targetX - saber.position.x) * 0.7;
-        saber.position.y += (targetY - saber.position.y) * 0.7;
-        saber.position.z = 0.1;
-
-        saber.velocity.x = vx;
-        saber.velocity.y = vy;
-        saber.velocity.z = 0;
-        saber.speed = Math.sqrt(vx * vx + vy * vy);
-
-        // Blade angles forward and slightly upright
-        saber.direction.x = vx * 0.04;
-        saber.direction.y = 0.35 + vy * 0.04;
-        saber.direction.z = -0.92;
-        const len = Math.sqrt(saber.direction.x ** 2 + saber.direction.y ** 2 + saber.direction.z ** 2);
-        saber.direction.x /= len;
-        saber.direction.y /= len;
-        saber.direction.z /= len;
-
-        saber.isTracking = true;
-        prevPos.x = saber.position.x;
-        prevPos.y = saber.position.y;
-        prevPos.z = saber.position.z;
-      };
-
-      updateMouseSaber(this.leftSaber, this.prevLeftPos, targetLeftX);
-      updateMouseSaber(this.rightSaber, this.prevRightPos, targetRightX);
+      this.updateMouseSabers(dt);
       return;
     }
 
@@ -434,6 +521,129 @@ export class HandTracker {
 
     updateWebcamSaber(this.leftSaber, this.targetLeftPos, this.targetLeftDir, this.prevLeftPos);
     updateWebcamSaber(this.rightSaber, this.targetRightPos, this.targetRightDir, this.prevRightPos);
+  }
+
+  /**
+   * Mouse mode: single pointer, both sabers follow mouse with offset
+   */
+  private updateMouseSabers(dt: number) {
+    const targetLeftX = this.mousePos.x - 0.45;
+    const targetRightX = this.mousePos.x + 0.45;
+    const targetY = this.mousePos.y;
+
+    const updateSaber = (saber: SaberPose, prevPos: { x: number; y: number; z: number }, targetX: number) => {
+      const vx = (targetX - saber.position.x) / Math.max(0.001, dt);
+      const vy = (targetY - saber.position.y) / Math.max(0.001, dt);
+
+      saber.position.x += (targetX - saber.position.x) * 0.7;
+      saber.position.y += (targetY - saber.position.y) * 0.7;
+      saber.position.z = 0.1;
+
+      saber.velocity.x = vx;
+      saber.velocity.y = vy;
+      saber.velocity.z = 0;
+      saber.speed = Math.sqrt(vx * vx + vy * vy);
+
+      // Blade angles forward and slightly upright
+      saber.direction.x = vx * 0.04;
+      saber.direction.y = 0.35 + vy * 0.04;
+      saber.direction.z = -0.92;
+      const len = Math.sqrt(saber.direction.x ** 2 + saber.direction.y ** 2 + saber.direction.z ** 2);
+      saber.direction.x /= len;
+      saber.direction.y /= len;
+      saber.direction.z /= len;
+
+      saber.isTracking = true;
+      prevPos.x = saber.position.x;
+      prevPos.y = saber.position.y;
+      prevPos.z = saber.position.z;
+    };
+
+    updateSaber(this.leftSaber, this.prevLeftPos, targetLeftX);
+    updateSaber(this.rightSaber, this.prevRightPos, targetRightX);
+  }
+
+  /**
+   * TOUCH mode: Independent dual-touch saber control
+   * Each touch is tracked separately — left side = red, right side = blue
+   * Swipe velocity directly maps to saber speed for satisfying hits
+   */
+  private updateTouchSabers(dt: number) {
+    const safeDt = Math.max(0.001, dt);
+
+    // LEFT saber (Red)
+    if (this.touchLeftActive) {
+      const targetX = this.touchLeftPos.x;
+      const targetY = this.touchLeftPos.y;
+
+      // Smooth approach (responsive but not jerky)
+      const lerpFactor = 0.75;
+      this.leftSaber.position.x += (targetX - this.leftSaber.position.x) * lerpFactor;
+      this.leftSaber.position.y += (targetY - this.leftSaber.position.y) * lerpFactor;
+      this.leftSaber.position.z = 0.1;
+
+      // Velocity from touch delta
+      const vx = (this.touchLeftPos.x - this.touchLeftPrev.x) / safeDt;
+      const vy = (this.touchLeftPos.y - this.touchLeftPrev.y) / safeDt;
+
+      this.leftSaber.velocity.x += (vx - this.leftSaber.velocity.x) * 0.5;
+      this.leftSaber.velocity.y += (vy - this.leftSaber.velocity.y) * 0.5;
+      this.leftSaber.velocity.z = 0;
+      // Touch gives generous speed — swipes feel powerful
+      this.leftSaber.speed = Math.hypot(this.leftSaber.velocity.x, this.leftSaber.velocity.y) * 1.5;
+
+      // Direction follows swipe
+      this.leftSaber.direction.x = vx * 0.06;
+      this.leftSaber.direction.y = 0.3 + vy * 0.06;
+      this.leftSaber.direction.z = -0.92;
+      const len = Math.hypot(this.leftSaber.direction.x, this.leftSaber.direction.y, this.leftSaber.direction.z) || 1;
+      this.leftSaber.direction.x /= len;
+      this.leftSaber.direction.y /= len;
+      this.leftSaber.direction.z /= len;
+
+      this.leftSaber.isTracking = true;
+      this.prevLeftPos.x = this.leftSaber.position.x;
+      this.prevLeftPos.y = this.leftSaber.position.y;
+      this.prevLeftPos.z = this.leftSaber.position.z;
+    } else {
+      this.leftSaber.isTracking = false;
+      this.leftSaber.speed = 0;
+    }
+
+    // RIGHT saber (Blue)
+    if (this.touchRightActive) {
+      const targetX = this.touchRightPos.x;
+      const targetY = this.touchRightPos.y;
+
+      const lerpFactor = 0.75;
+      this.rightSaber.position.x += (targetX - this.rightSaber.position.x) * lerpFactor;
+      this.rightSaber.position.y += (targetY - this.rightSaber.position.y) * lerpFactor;
+      this.rightSaber.position.z = 0.1;
+
+      const vx = (this.touchRightPos.x - this.touchRightPrev.x) / safeDt;
+      const vy = (this.touchRightPos.y - this.touchRightPrev.y) / safeDt;
+
+      this.rightSaber.velocity.x += (vx - this.rightSaber.velocity.x) * 0.5;
+      this.rightSaber.velocity.y += (vy - this.rightSaber.velocity.y) * 0.5;
+      this.rightSaber.velocity.z = 0;
+      this.rightSaber.speed = Math.hypot(this.rightSaber.velocity.x, this.rightSaber.velocity.y) * 1.5;
+
+      this.rightSaber.direction.x = vx * 0.06;
+      this.rightSaber.direction.y = 0.3 + vy * 0.06;
+      this.rightSaber.direction.z = -0.92;
+      const len = Math.hypot(this.rightSaber.direction.x, this.rightSaber.direction.y, this.rightSaber.direction.z) || 1;
+      this.rightSaber.direction.x /= len;
+      this.rightSaber.direction.y /= len;
+      this.rightSaber.direction.z /= len;
+
+      this.rightSaber.isTracking = true;
+      this.prevRightPos.x = this.rightSaber.position.x;
+      this.prevRightPos.y = this.rightSaber.position.y;
+      this.prevRightPos.z = this.rightSaber.position.z;
+    } else {
+      this.rightSaber.isTracking = false;
+      this.rightSaber.speed = 0;
+    }
   }
 }
 

@@ -666,6 +666,7 @@ html, body {
 .input-mode-tabs {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .mode-tab-btn {
@@ -698,6 +699,28 @@ html, body {
 }
 .dot-indicator.red { background: var(--neon-red); box-shadow: 0 0 6px var(--neon-red); }
 .dot-indicator.blue { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
+.dot-indicator.green { background: #00ff88; box-shadow: 0 0 6px #00ff88; }
+
+/* Touch Mode Hint Banner */
+.touch-mode-hint {
+  margin-top: 4px;
+}
+.touch-mode-hint .hint-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.25);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #c8e0d6;
+  letter-spacing: 0.03em;
+}
+.touch-mode-hint .hint-icon {
+  font-size: 20px;
+}
 
 /* Track Cards Grid */
 .tracks-section {

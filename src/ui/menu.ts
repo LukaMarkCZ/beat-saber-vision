@@ -1,5 +1,6 @@
 /**
  * Cyberpunk Main Menu, Track Selection, and Settings Modal
+ * Now with 3 input modes: WEBCAM / MOUSE / TOUCH
  */
 
 import { PRESET_TRACKS, type SongTrack } from '../audio/beatmaps';
@@ -19,6 +20,10 @@ export class MainMenu {
     this.container = document.createElement('div');
     this.container.className = 'main-menu-screen';
 
+    // Auto-detect best default input mode
+    const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    const defaultMode = isTouchDevice ? 'TOUCH' : 'WEBCAM';
+
     this.container.innerHTML = `
       <div class="menu-content-wrap">
         <!-- Brand Header -->
@@ -27,7 +32,7 @@ export class MainMenu {
             <h1 class="brand-title">
               <span class="neon-red">BEAT</span> <span class="neon-cyan">SABER</span>
             </h1>
-            <div class="brand-subtitle">CYBER VISION // WEBCAM HAND TRACKING</div>
+            <div class="brand-subtitle">CYBER VISION // RHYTHM GAME</div>
           </div>
           <div class="header-actions">
             <button id="menu-settings-btn" class="cyber-btn-secondary" title="Settings & Calibration">
@@ -36,27 +41,39 @@ export class MainMenu {
           </div>
         </header>
 
-        <!-- Input Mode Selection Pill -->
+        <!-- Input Mode Selection Pill — 3 modes -->
         <div class="input-mode-selector-wrap">
-          <span class="selector-label">CONTROL SCHEME:</span>
+          <span class="selector-label">OVLÁDÁNÍ:</span>
           <div class="input-mode-tabs">
-            <button id="mode-webcam-btn" class="mode-tab-btn active">
+            <button id="mode-touch-btn" class="mode-tab-btn ${defaultMode === 'TOUCH' ? 'active' : ''}">
+              <span class="dot-indicator green"></span>
+              👆 DOTYK (TABLET)
+            </button>
+            <button id="mode-webcam-btn" class="mode-tab-btn ${defaultMode === 'WEBCAM' ? 'active' : ''}">
               <span class="dot-indicator red"></span>
-              WEBCAM HAND TRACKING
+              📷 WEBCAM
             </button>
             <button id="mode-mouse-btn" class="mode-tab-btn">
               <span class="dot-indicator blue"></span>
-              MOUSE / TOUCH SABER
+              🖱 MYŠ
             </button>
+          </div>
+        </div>
+
+        <!-- Touch mode hint -->
+        <div id="touch-mode-hint" class="touch-mode-hint" style="display: ${defaultMode === 'TOUCH' ? 'block' : 'none'};">
+          <div class="hint-content">
+            <span class="hint-icon">👆</span>
+            <span>Levá polovina obrazovky = <strong style="color: #ff1053">ČERVENÝ</strong> meč &nbsp;|&nbsp; Pravá polovina = <strong style="color: #00f0ff">MODRÝ</strong> meč</span>
           </div>
         </div>
 
         <!-- Track Selection Grid -->
         <div class="tracks-section">
           <div class="section-title-wrap">
-            <h2 class="section-title">SELECT TRACK</h2>
+            <h2 class="section-title">VYBER TRACK</h2>
             <label class="custom-upload-btn cyber-btn-secondary">
-              📁 LOAD CUSTOM AUDIO
+              📁 VLASTNÍ AUDIO
               <input id="custom-audio-input" type="file" accept="audio/*" style="display:none" />
             </label>
           </div>
@@ -81,7 +98,7 @@ export class MainMenu {
       <div id="settings-modal" class="settings-modal-backdrop" style="display: none;">
         <div class="settings-modal-card">
           <div class="modal-header">
-            <h3>CALIBRATION & SETTINGS</h3>
+            <h3>KALIBRACE & NASTAVENÍ</h3>
             <button id="settings-close-btn" class="close-modal-btn">✕</button>
           </div>
           <div class="settings-body">
@@ -130,7 +147,7 @@ export class MainMenu {
             </div>
           </div>
           <div class="modal-footer">
-            <button id="settings-save-btn" class="cyber-btn-primary">SAVE & CLOSE</button>
+            <button id="settings-save-btn" class="cyber-btn-primary">ULOŽIT & ZAVŘÍT</button>
           </div>
         </div>
       </div>
@@ -139,6 +156,9 @@ export class MainMenu {
     parentEl.appendChild(this.container);
 
     this.settingsModal = this.container.querySelector('#settings-modal')!;
+
+    // Set default input mode
+    handTracker.setInputMode(defaultMode as any);
 
     this.renderTrackCards();
     this.setupEventListeners();
@@ -198,23 +218,25 @@ export class MainMenu {
   }
 
   private setupEventListeners() {
-    // Mode toggles
+    // Mode toggles — 3 buttons
     const webcamBtn = this.container.querySelector('#mode-webcam-btn') as HTMLButtonElement;
     const mouseBtn = this.container.querySelector('#mode-mouse-btn') as HTMLButtonElement;
+    const touchBtn = this.container.querySelector('#mode-touch-btn') as HTMLButtonElement;
+    const touchHint = this.container.querySelector('#touch-mode-hint') as HTMLDivElement;
 
-    webcamBtn.addEventListener('click', () => {
+    const setActiveMode = (btn: HTMLButtonElement, mode: 'WEBCAM' | 'MOUSE' | 'TOUCH') => {
       soundSynth.playClick();
-      handTracker.setInputMode('WEBCAM');
-      webcamBtn.classList.add('active');
-      mouseBtn.classList.remove('active');
-    });
-
-    mouseBtn.addEventListener('click', () => {
-      soundSynth.playClick();
-      handTracker.setInputMode('MOUSE');
-      mouseBtn.classList.add('active');
+      handTracker.setInputMode(mode);
       webcamBtn.classList.remove('active');
-    });
+      mouseBtn.classList.remove('active');
+      touchBtn.classList.remove('active');
+      btn.classList.add('active');
+      touchHint.style.display = mode === 'TOUCH' ? 'block' : 'none';
+    };
+
+    webcamBtn.addEventListener('click', () => setActiveMode(webcamBtn, 'WEBCAM'));
+    mouseBtn.addEventListener('click', () => setActiveMode(mouseBtn, 'MOUSE'));
+    touchBtn.addEventListener('click', () => setActiveMode(touchBtn, 'TOUCH'));
 
     // Custom audio file upload
     const customInput = this.container.querySelector('#custom-audio-input') as HTMLInputElement;

@@ -3,6 +3,7 @@
  */
 
 import { gameState, type HitResult } from '../game/gameState';
+import { handTracker } from '../vision/handTracker';
 
 export class GameHUD {
   private container: HTMLDivElement;
@@ -117,7 +118,14 @@ export class GameHUD {
 
   public updateHandStatus(hasHands: boolean) {
     if (this.handStatusEl) {
-      if (hasHands) {
+      const mode = handTracker.getInputMode();
+      if (mode === 'TOUCH') {
+        this.handStatusEl.textContent = '👆 DOTYKOVÉ OVLÁDÁNÍ';
+        this.handStatusEl.className = 'hud-hand-status-badge ready';
+      } else if (mode === 'MOUSE') {
+        this.handStatusEl.textContent = '🖱 MYŠ AKTIVNÍ';
+        this.handStatusEl.className = 'hud-hand-status-badge ready';
+      } else if (hasHands) {
         this.handStatusEl.textContent = '⚡ RUCE AKTIVNÍ (READY)';
         this.handStatusEl.className = 'hud-hand-status-badge ready';
       } else {

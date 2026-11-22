@@ -14,6 +14,7 @@ export class WorldEnvironment {
   public renderer: THREE.WebGLRenderer;
   public composer: EffectComposer;
   public bloomPass: UnrealBloomPass;
+  public isMobile: boolean;
 
   // Visual elements
   private archGates: THREE.Group[] = [];
@@ -22,13 +23,17 @@ export class WorldEnvironment {
   private runwayLinesMaterial!: THREE.ShaderMaterial;
 
   constructor(canvas: HTMLCanvasElement) {
-    // 1. Renderer setup
+    // Detect mobile / tablet for performance scaling
+    this.isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 0 && window.innerWidth < 1400);
+
+    // 1. Renderer setup — clamp pixel ratio harder on mobile
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      antialias: !this.isMobile, // Disable AA on mobile for performance
       powerPreference: 'high-performance'
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.isMobile ? 1.5 : 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.95;
@@ -55,10 +60,14 @@ export class WorldEnvironment {
 
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.45, // Strength (gentle glow, not a blinding flashbang)
+      this.isMobile ? 0.3 : 0.45, // Lighter bloom on mobile
       0.35, // Radius
       0.82  // Threshold (only high-emissive objects glow)
     );
+    // On mobile, start with bloom off for best performance — user can enable in settings
+    if (this.isMobile) {
+      this.bloomPass.enabled = false;
+    }
     this.composer.addPass(this.bloomPass);
 
     // 6. Build scenery
@@ -176,7 +185,7 @@ export class WorldEnvironment {
 
   private createNeonArchGates() {
     // Glowing neon hexagon rings along the tunnel that pulse with the music
-    const gateCount = 8;
+    const gateCount = this.isMobile ? 5 : 8;
     const gateSpacing = 6.5;
 
     for (let i = 0; i < gateCount; i++) {
@@ -203,8 +212,9 @@ export class WorldEnvironment {
 
   private createEqualizerTowers() {
     // Subtle neon equalizer pillars flanking the runway
-    const barCount = 16;
-    const barSpacing = 2.4;
+    // Fewer pillars on mobile for performance
+    const barCount = this.isMobile ? 8 : 16;
+    const barSpacing = this.isMobile ? 4.8 : 2.4;
     const barWidth = 0.25;
 
     for (let i = 0; i < barCount; i++) {

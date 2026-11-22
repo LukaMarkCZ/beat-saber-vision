@@ -75,6 +75,12 @@ class BeatSaberApp {
     // 5. Start Render & Game Loop
     this.lastTime = performance.now();
     requestAnimationFrame((t) => this.gameLoop(t));
+
+    // 6. Prevent browser touch gestures on game canvas (Safari iOS rubber-banding, zoom etc.)
+    canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    document.body.style.touchAction = 'none';
+    document.body.style.overscrollBehavior = 'none';
   }
 
   private setupEventHandlers() {

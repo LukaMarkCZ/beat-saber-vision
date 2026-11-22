@@ -1,5 +1,6 @@
 /**
- * Beat Saber Cube Manager: Note Spawning, Collision Detection, and Half-Cut Physics Separation
+ * Beat Saber Cube Manager: Note Spawning, Collision Detection, 
+ * Approach Visual Cues, and Half-Cut Physics Separation
  */
 
 import * as THREE from 'three';
@@ -16,6 +17,8 @@ export interface ActiveCube {
   initialZ: number;
   isHit: boolean;
   box: THREE.Box3;
+  // Approach indicator ring
+  approachRing: THREE.Mesh | null;
 }
 
 export interface CutHalfMesh {
@@ -42,6 +45,9 @@ export class CubeManager {
   private redMat: THREE.MeshStandardMaterial;
   private blueMat: THREE.MeshStandardMaterial;
   private arrowTextures: Map<string, THREE.CanvasTexture> = new Map();
+  private approachRingGeo: THREE.RingGeometry;
+  private approachRedMat: THREE.MeshBasicMaterial;
+  private approachBlueMat: THREE.MeshBasicMaterial;
 
   // Lane coordinates: 4 horizontal columns x 2 vertical rows (optimized for human arm wingspan)
   public static LANE_X = [-0.85, -0.28, 0.28, 0.85];
@@ -66,6 +72,25 @@ export class CubeManager {
       emissiveIntensity: 0.25,
       roughness: 0.35,
       metalness: 0.6
+    });
+
+    // Pre-create approach ring geometry and materials (shared)
+    this.approachRingGeo = new THREE.RingGeometry(0.28, 0.32, 24);
+    this.approachRedMat = new THREE.MeshBasicMaterial({
+      color: 0xff1053,
+      transparent: true,
+      opacity: 0.0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    this.approachBlueMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: 0.0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
     });
 
     this.pregenerateArrowTextures();
@@ -183,6 +208,16 @@ export class CubeManager {
   }
 
   /**
+   * Create an approach indicator ring (subtle visual depth cue)
+   */
+  private createApproachRing(type: 'red' | 'blue'): THREE.Mesh {
+    const mat = (type === 'red' ? this.approachRedMat : this.approachBlueMat).clone();
+    const ring = new THREE.Mesh(this.approachRingGeo, mat);
+    ring.rotation.x = -Math.PI / 2; // Face upward on the runway
+    return ring;
+  }
+
+  /**
    * Spawn halves when cube is cut cleanly
    */
   private spawnCutHalves(cube: ActiveCube, cutDir: CutDirection) {
@@ -248,14 +283,26 @@ export class CubeManager {
       mesh.position.set(laneX, laneY, this.spawnZ);
       this.scene.add(mesh);
 
+      // Create approach indicator ring on the runway floor
+      const approachRing = this.createApproachRing(note.type);
+      approachRing.position.set(laneX, 0.02, 0); // Fixed at strike zone Z=0 on the floor
+      this.scene.add(approachRing);
+
       this.activeCubes.push({
         note,
         mesh,
         initialZ: this.spawnZ,
         isHit: false,
-        box: new THREE.Box3().setFromObject(mesh)
+        box: new THREE.Box3().setFromObject(mesh),
+        approachRing
       });
     }
+
+    // Determine speed threshold based on input mode
+    // Touch mode gets much lower threshold since swiping is different from waving hands
+    const isTouchMode = handTracker.getInputMode() === 'TOUCH';
+    const isMouseMode = handTracker.getInputMode() === 'MOUSE';
+    const speedThreshold = isTouchMode ? 0.3 : isMouseMode ? 0.4 : 0.65;
 
     // 2. Move active cubes towards player & test collision
     for (let i = this.activeCubes.length - 1; i >= 0; i--) {
@@ -270,18 +317,40 @@ export class CubeManager {
       // Update bounding box
       cube.box.setFromObject(cube.mesh);
 
-      // Check collision with both sabers in calibrated slice zone
-      if (!cube.isHit && cube.mesh.position.z >= -0.85 && cube.mesh.position.z <= 0.65) {
-        this.checkSaberIntersection(cube, saberManager.leftSaber.segment, 'red', i);
+      // === APPROACH RING VISUAL CUE ===
+      // Ring glows brighter as cube approaches Z=0 (strike zone)
+      if (cube.approachRing) {
+        const distToStrike = Math.abs(targetZ);
+        const approachZone = 8.0; // Start showing ring at this Z distance
+        
+        if (distToStrike < approachZone && targetZ < 0) {
+          const progress = 1.0 - (distToStrike / approachZone);
+          const ringMat = cube.approachRing.material as THREE.MeshBasicMaterial;
+          ringMat.opacity = progress * 0.5; // Subtle, max 50% opacity
+          
+          // Ring shrinks as cube approaches (like a timing circle in rhythm games)
+          const ringScale = 1.0 + (1.0 - progress) * 1.5;
+          cube.approachRing.scale.set(ringScale, ringScale, 1);
+        } else if (targetZ >= 0) {
+          // Past strike zone — hide ring
+          const ringMat = cube.approachRing.material as THREE.MeshBasicMaterial;
+          ringMat.opacity = 0;
+        }
+      }
+
+      // Check collision with both sabers in calibrated slice zone (wider window for playability)
+      if (!cube.isHit && cube.mesh.position.z >= -1.2 && cube.mesh.position.z <= 1.0) {
+        this.checkSaberIntersection(cube, saberManager.leftSaber.segment, 'red', i, speedThreshold);
         if (!cube.isHit) {
-          this.checkSaberIntersection(cube, saberManager.rightSaber.segment, 'blue', i);
+          this.checkSaberIntersection(cube, saberManager.rightSaber.segment, 'blue', i, speedThreshold);
         }
       }
 
       // Check for missed note (passes behind player)
-      if (!cube.isHit && cube.mesh.position.z > 2.2) {
+      if (!cube.isHit && cube.mesh.position.z > 2.5) {
         cube.isHit = true;
         this.scene.remove(cube.mesh);
+        if (cube.approachRing) this.scene.remove(cube.approachRing);
         this.activeCubes.splice(i, 1);
 
         gameState.registerMiss();
@@ -333,22 +402,23 @@ export class CubeManager {
 
   /**
    * Continuous swept collision detection: tests current frame, previous frame, midpoint, and hand base
-   * Requires ACTIVE tracking and MOTION (speed >= 0.65 m/s) so stationary sabers don't auto-kill notes!
+   * Requires ACTIVE tracking and MOTION (configurable speed threshold)
    */
   private checkSaberIntersection(
     cube: ActiveCube,
     saber: SaberSegment,
     saberColor: 'red' | 'blue',
-    cubeIndex: number
+    cubeIndex: number,
+    speedThreshold: number
   ) {
     // 1. Must be actively tracked
     if (!saber.isTracking) return;
 
     // 2. Must be actively in motion (prevent auto-destroying cubes while doing nothing)
-    if (saber.speed < 0.65) return;
+    if (saber.speed < speedThreshold) return;
 
     const cubePos = cube.mesh.position;
-    const cubeRadius = 0.36; // Calibrated radius matching the physical size of the cube
+    const cubeRadius = 0.40; // Slightly more generous for playability
 
     // 1. Current frame blade distance
     const distCurr = this.distSegmentToPoint(saber.base, saber.tip, cubePos);
@@ -371,6 +441,11 @@ export class CubeManager {
 
     if (minDist <= cubeRadius) {
       cube.isHit = true;
+
+      // Remove approach ring
+      if (cube.approachRing) {
+        this.scene.remove(cube.approachRing);
+      }
 
       // Color match or single-hand play
       const isMatchingColor = (cube.note.type === saberColor) || handTracker.isSingleHandMode;
